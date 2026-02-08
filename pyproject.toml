@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "epsilon-attestation-verifier"
+version = "1.0.0"
+description = "Standalone tool to verify AWS Nitro Enclave attestation documents from Epsilon"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "Epsilon Team"}
+]
+requires-python = ">=3.8"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security :: Cryptography",
+]
+keywords = ["aws", "nitro", "enclave", "attestation", "tee", "verification"]
+dependencies = [
+    "cbor2>=5.4.0",
+    "cryptography>=3.4.0",
+    "requests>=2.25.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=3.0.0",
+]
+
+[project.scripts]
+epsilon-verify = "epsilon_verifier.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/epsilon-data/epsilon-attestation-verifier"
+Documentation = "https://github.com/epsilon-data/epsilon-attestation-verifier#readme"
+Repository = "https://github.com/epsilon-data/epsilon-attestation-verifier"
+Issues = "https://github.com/epsilon-data/epsilon-attestation-verifier/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v"

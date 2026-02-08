@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual Environment
+.venv/
+venv/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+
+# Test attestation data
+attestation.json
+attestation_doc.txt
+attestation_doc_prod.txt
+
+# Cache
+.cache/
+.pytest_cache/
+.coverage
+htmlcov/
