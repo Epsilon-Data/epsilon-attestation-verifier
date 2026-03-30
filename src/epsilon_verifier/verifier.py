@@ -27,7 +27,6 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec, padding, utils
 from cryptography.hazmat.backends import default_backend
 from cryptography.x509 import load_der_x509_certificate, ExtensionOID, ExtensionNotFound
-from cryptography.x509.oid import ExtendedKeyUsageOID
 from cryptography.exceptions import InvalidSignature
 
 from .aws_root_cert import get_aws_root_certificate
@@ -47,7 +46,7 @@ VALID_PCR_LENGTHS = {32, 48, 64}  # SHA256, SHA384, SHA512
 MAX_PCR_INDEX = 31
 REQUIRED_DIGEST = "SHA384"
 MAX_PAYLOAD_SIZE = 16384  # 16KB max payload
-MAX_CERTIFICATE_SIZE = 1024  # 1KB max certificate
+MAX_CERTIFICATE_SIZE = 4096  # 4KB max certificate (real Nitro certs are ~1-1.5KB)
 MAX_USER_DATA_SIZE = 512  # 512 bytes max user_data (AWS spec)
 MAX_NONCE_SIZE = 512  # 512 bytes max nonce
 MAX_PUBLIC_KEY_SIZE = 1024  # 1KB max public_key
@@ -71,7 +70,7 @@ class AttestationDocument:
 
     @property
     def timestamp_datetime(self) -> datetime:
-        return datetime.utcfromtimestamp(self.timestamp / 1000)
+        return datetime.fromtimestamp(self.timestamp / 1000, tz=timezone.utc)
 
     @property
     def pcr0(self) -> Optional[str]:
@@ -146,6 +145,7 @@ def verify_attestation(
     expected_pcr2: Optional[str] = None,
     aws_root_cert_path: Optional[str] = None,
     skip_certificate_verification: bool = False,
+    allow_expired: bool = False,
 ) -> VerificationResult:
     """
     Verify an AWS Nitro Enclave attestation document.
@@ -197,7 +197,8 @@ def verify_attestation(
             result.certificate_chain_valid = _verify_certificate_chain(
                 attestation.certificate,
                 attestation.cabundle,
-                aws_root_cert_path
+                aws_root_cert_path,
+                allow_expired=allow_expired
             )
             result.timing['cert_chain_ms'] = round((_time.time() - t0) * 1000, 2)
             if not result.certificate_chain_valid:
@@ -227,14 +228,20 @@ def verify_attestation(
         logger.info("Step 4: Verifying PCR values...")
         t0 = _time.time()
         pcr_errors = []
-        if expected_pcr0 and attestation.pcr0:
-            if attestation.pcr0.lower() != expected_pcr0.lower():
+        if expected_pcr0:
+            if not attestation.pcr0:
+                pcr_errors.append("PCR0 expected but not present in attestation")
+            elif attestation.pcr0.lower() != expected_pcr0.lower():
                 pcr_errors.append(f"PCR0 mismatch: got {attestation.pcr0}, expected {expected_pcr0}")
-        if expected_pcr1 and attestation.pcr1:
-            if attestation.pcr1.lower() != expected_pcr1.lower():
+        if expected_pcr1:
+            if not attestation.pcr1:
+                pcr_errors.append("PCR1 expected but not present in attestation")
+            elif attestation.pcr1.lower() != expected_pcr1.lower():
                 pcr_errors.append(f"PCR1 mismatch: got {attestation.pcr1}, expected {expected_pcr1}")
-        if expected_pcr2 and attestation.pcr2:
-            if attestation.pcr2.lower() != expected_pcr2.lower():
+        if expected_pcr2:
+            if not attestation.pcr2:
+                pcr_errors.append("PCR2 expected but not present in attestation")
+            elif attestation.pcr2.lower() != expected_pcr2.lower():
                 pcr_errors.append(f"PCR2 mismatch: got {attestation.pcr2}, expected {expected_pcr2}")
         result.timing['pcr_match_ms'] = round((_time.time() - t0) * 1000, 2)
 
@@ -450,7 +457,8 @@ def _validate_attestation_fields(payload: Dict[str, Any]) -> None:
 def _verify_certificate_chain(
     leaf_cert_der: bytes,
     cabundle: List[bytes],
-    aws_root_cert_path: Optional[str] = None
+    aws_root_cert_path: Optional[str] = None,
+    allow_expired: bool = False
 ) -> bool:
     """
     Verify certificate chain per AWS specification.
@@ -509,8 +517,11 @@ def _verify_certificate_chain(
                 logger.error(f"Certificate {i} not yet valid")
                 return False
             if cert.not_valid_after_utc < now:
-                logger.error(f"Certificate {i} has expired")
-                return False
+                if allow_expired:
+                    logger.warning(f"Certificate {i} has expired (allow_expired=True, continuing)")
+                else:
+                    logger.error(f"Certificate {i} has expired")
+                    return False
 
             # Check Basic Constraints
             try:
@@ -581,8 +592,11 @@ def _verify_certificate_chain(
             logger.error("Root certificate not yet valid")
             return False
         if root_cert.not_valid_after_utc < now:
-            logger.error("Root certificate has expired")
-            return False
+            if allow_expired:
+                logger.warning("Root certificate has expired (allow_expired=True, continuing)")
+            else:
+                logger.error("Root certificate has expired")
+                return False
 
         logger.info(f"Certificate chain verified ({len(chain)} certs + root)")
         return True

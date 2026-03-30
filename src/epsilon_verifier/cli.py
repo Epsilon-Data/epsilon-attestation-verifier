@@ -21,6 +21,28 @@ def setup_logging(verbose: bool):
     )
 
 
+def _extract_attestation_from_json(raw: str) -> str:
+    """
+    Extract base64 attestation document from raw input.
+
+    Handles nested JSON structures from Epsilon job responses,
+    or returns the input as-is if it's raw base64.
+    """
+    try:
+        json_data = json.loads(raw)
+        # Extract attestation document from nested structure
+        if 'attestation' in json_data:
+            if isinstance(json_data['attestation'], dict):
+                if 'attestation' in json_data['attestation']:
+                    if 'attestation_document' in json_data['attestation']['attestation']:
+                        return json_data['attestation']['attestation']['attestation_document']
+                if 'attestation_document' in json_data['attestation']:
+                    return json_data['attestation']['attestation_document']
+    except json.JSONDecodeError:
+        pass
+    return raw
+
+
 def cmd_verify(args):
     """Verify an attestation document."""
     # Load attestation document
@@ -29,22 +51,7 @@ def cmd_verify(args):
         print(f"Error: Attestation file not found: {attestation_path}", file=sys.stderr)
         return 1
 
-    attestation_data = attestation_path.read_text().strip()
-
-    # Check if it's JSON (from Epsilon job response)
-    try:
-        json_data = json.loads(attestation_data)
-        # Extract attestation document from nested structure
-        if 'attestation' in json_data:
-            if isinstance(json_data['attestation'], dict):
-                if 'attestation' in json_data['attestation']:
-                    if 'attestation_document' in json_data['attestation']['attestation']:
-                        attestation_data = json_data['attestation']['attestation']['attestation_document']
-                elif 'attestation_document' in json_data['attestation']:
-                    attestation_data = json_data['attestation']['attestation_document']
-    except json.JSONDecodeError:
-        # Assume it's raw base64 attestation
-        pass
+    attestation_data = _extract_attestation_from_json(attestation_path.read_text().strip())
 
     # Load expected output
     expected_output = None
@@ -134,13 +141,25 @@ def _print_result(result):
 
 def cmd_list_versions(args):
     """List known enclave versions."""
+    if args.fetch_latest:
+        print("Fetching latest versions from GitHub...")
+        latest = get_published_pcrs(fetch_latest=True)
+        if latest:
+            print(f"\nLatest from GitHub: {latest.version}")
+            print(f"  PCR0: {latest.pcr0[:32]}...")
+            if latest.release_date:
+                print(f"  Released: {latest.release_date}")
+        else:
+            print("Failed to fetch versions from GitHub.")
+
     versions = list_known_versions()
     if not versions:
         print("No known versions in built-in registry.")
-        print("Use --fetch-latest to get versions from GitHub.")
+        if not args.fetch_latest:
+            print("Use --fetch-latest to get versions from GitHub.")
         return 0
 
-    print("Known Epsilon Enclave Versions:")
+    print("\nBuilt-in Versions:" if args.fetch_latest else "Known Epsilon Enclave Versions:")
     for version in sorted(versions):
         pcrs = get_published_pcrs(version)
         if pcrs:
@@ -159,18 +178,7 @@ def cmd_extract(args):
         print(f"Error: Attestation file not found: {attestation_path}", file=sys.stderr)
         return 1
 
-    attestation_data = attestation_path.read_text().strip()
-
-    # Parse JSON if needed
-    try:
-        json_data = json.loads(attestation_data)
-        if 'attestation' in json_data:
-            if isinstance(json_data['attestation'], dict):
-                if 'attestation' in json_data['attestation']:
-                    if 'attestation_document' in json_data['attestation']['attestation']:
-                        attestation_data = json_data['attestation']['attestation']['attestation_document']
-    except json.JSONDecodeError:
-        pass
+    attestation_data = _extract_attestation_from_json(attestation_path.read_text().strip())
 
     # Verify with skip options to just extract data
     result = verify_attestation(

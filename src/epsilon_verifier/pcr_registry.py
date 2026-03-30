@@ -15,7 +15,7 @@ import requests
 logger = logging.getLogger(__name__)
 
 # GitHub URL for published PCR values
-EPSILON_PCR_URL = "https://raw.githubusercontent.com/epsilon-data/epsilon-enclave/main/published/pcr_values.json"
+EPSILON_PCR_URL = "https://raw.githubusercontent.com/Epsilon-Data/epsilon-enclave/main/published/pcr-registry.json"
 
 
 @dataclass
@@ -42,15 +42,13 @@ class PCRValues:
 # Built-in registry of known PCR values
 # These are embedded for offline verification
 KNOWN_PCR_VALUES: Dict[str, PCRValues] = {
-    # Add known versions here as they are released
-    # Example:
-    # "1.0.0": PCRValues(
-    #     version="1.0.0",
-    #     pcr0="abc123...",
-    #     pcr1="def456...",
-    #     pcr2="ghi789...",
-    #     release_date="2025-02-01",
-    # ),
+    "1.0.0": PCRValues(
+        version="1.0.0",
+        pcr0="6165855369654a587bdad59fa532f430d7defa38ecf57eeac6d29c7e87a32b621891862d04fb64423f6bb1e1626fc026",
+        pcr1="4b4d5b3661b3efc12920900c80e126e4ce783c522de6c02a2a5bf7af3a2b9327b86776f188e4be1c1c404a129dbda493",
+        pcr2="a50f214952d1cc168b04da54db1b163a86e5ffefec223b7b640df88b665c3db745e9a6865a7db265374239fd264a5522",
+        release_date="2026-02-17",
+    ),
 }
 
 
@@ -95,35 +93,31 @@ def _fetch_pcrs_from_github(version: Optional[str] = None) -> Optional[PCRValues
     except requests.RequestException as e:
         raise RuntimeError(f"Failed to fetch PCR values: {e}")
 
-    versions = data.get('versions', {})
+    versions_list = data.get('versions', [])
 
     if version:
-        if version in versions:
-            v = versions[version]
-            return PCRValues(
-                version=version,
-                pcr0=v.get('pcr0', ''),
-                pcr1=v.get('pcr1', ''),
-                pcr2=v.get('pcr2', ''),
-                release_date=v.get('release_date'),
-                notes=v.get('notes'),
-            )
+        for entry in versions_list:
+            if entry.get('version') == version:
+                return _entry_to_pcr_values(entry)
         return None
 
-    # Return latest
-    latest = data.get('latest')
-    if latest and latest in versions:
-        v = versions[latest]
-        return PCRValues(
-            version=latest,
-            pcr0=v.get('pcr0', ''),
-            pcr1=v.get('pcr1', ''),
-            pcr2=v.get('pcr2', ''),
-            release_date=v.get('release_date'),
-            notes=v.get('notes'),
-        )
+    # Return latest (last entry in array)
+    if versions_list:
+        return _entry_to_pcr_values(versions_list[-1])
 
     return None
+
+
+def _entry_to_pcr_values(entry: dict) -> PCRValues:
+    """Convert a registry entry dict to a PCRValues dataclass."""
+    return PCRValues(
+        version=entry.get('version', ''),
+        pcr0=entry.get('pcr0', ''),
+        pcr1=entry.get('pcr1', ''),
+        pcr2=entry.get('pcr2', ''),
+        release_date=entry.get('release_date'),
+        notes=entry.get('notes'),
+    )
 
 
 def list_known_versions() -> list:

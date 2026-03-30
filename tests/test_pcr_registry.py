@@ -140,15 +140,15 @@ class TestFetchFromGitHub:
         """Test fetching with valid GitHub response."""
         mock_response = MagicMock()
         mock_response.json.return_value = {
-            "latest": "2.0.0",
-            "versions": {
-                "2.0.0": {
+            "versions": [
+                {
+                    "version": "2.0.0",
                     "pcr0": "github_pcr0",
                     "pcr1": "github_pcr1",
                     "pcr2": "github_pcr2",
                     "release_date": "2025-02-01",
                 }
-            }
+            ]
         }
 
         with patch('epsilon_verifier.pcr_registry.requests.get') as mock_get:
@@ -164,10 +164,9 @@ class TestFetchFromGitHub:
         """Test fetching returns None for version not in GitHub."""
         mock_response = MagicMock()
         mock_response.json.return_value = {
-            "latest": "1.0.0",
-            "versions": {
-                "1.0.0": {"pcr0": "x", "pcr1": "y", "pcr2": "z"}
-            }
+            "versions": [
+                {"version": "1.0.0", "pcr0": "x", "pcr1": "y", "pcr2": "z"}
+            ]
         }
 
         with patch('epsilon_verifier.pcr_registry.requests.get') as mock_get:
