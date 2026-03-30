@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "epsilon-attestation-verifier"
-version = "1.0.0"
+version = "1.1.0"
 description = "Standalone tool to verify AWS Nitro Enclave attestation documents from Epsilon"
 readme = "README.md"
 license = {text = "MIT"}
@@ -42,10 +42,10 @@ dev = [
 epsilon-verify = "epsilon_verifier.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/epsilon-data/epsilon-attestation-verifier"
-Documentation = "https://github.com/epsilon-data/epsilon-attestation-verifier#readme"
-Repository = "https://github.com/epsilon-data/epsilon-attestation-verifier"
-Issues = "https://github.com/epsilon-data/epsilon-attestation-verifier/issues"
+Homepage = "https://github.com/Epsilon-Data/epsilon-attestation-verifier"
+Documentation = "https://github.com/Epsilon-Data/epsilon-attestation-verifier#readme"
+Repository = "https://github.com/Epsilon-Data/epsilon-attestation-verifier"
+Issues = "https://github.com/Epsilon-Data/epsilon-attestation-verifier/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]

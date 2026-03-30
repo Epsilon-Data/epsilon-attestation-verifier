@@ -57,10 +57,10 @@ def get_aws_root_certificate(
     Returns:
         x509.Certificate object
     """
-    # If explicit path provided, use it
+    # If explicit path provided, use it (skip fingerprint check for custom certs)
     if cert_path:
-        logger.info(f"Loading AWS root cert from: {cert_path}")
-        return _load_cert_from_file(cert_path)
+        logger.info(f"Loading root cert from: {cert_path}")
+        return _load_cert_from_file(cert_path, verify_fingerprint=False)
 
     # Set up cache directory
     cache_path = Path(cache_dir) if cache_dir else DEFAULT_CACHE_DIR

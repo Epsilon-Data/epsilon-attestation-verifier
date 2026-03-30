@@ -77,7 +77,7 @@ class TestLoadFromExplicitPath:
 
                 get_aws_root_certificate(cert_path=cert_path)
 
-                mock_load.assert_called_once_with(cert_path)
+                mock_load.assert_called_once_with(cert_path, verify_fingerprint=False)
         finally:
             os.unlink(cert_path)
 
