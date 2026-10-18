@@ -40,3 +40,8 @@ class OutputHashMismatchError(VerificationError):
         self.expected = expected
         self.actual = actual
         super().__init__(f"Output hash mismatch: expected {expected}, got {actual}")
+
+
+class InvalidOutputFileError(VerificationError):
+    """Output file name or extension is outside the allowed rules."""
+    pass

@@ -35,6 +35,7 @@ else:
 ```bash
 epsilon-verify verify attestation.json
 epsilon-verify verify attestation.json --pcr0 abc123... --output output.txt --json
+epsilon-verify verify attestation.json --files results.csv plot.png
 epsilon-verify extract attestation.json
 ```
 
@@ -52,6 +53,7 @@ epsilon-verify extract attestation.json
 | `aws_root_cert_path` | `str` | `None` | Custom path to AWS Nitro root certificate PEM |
 | `skip_certificate_verification` | `bool` | `False` | Skip all cert checks (testing only) |
 | `allow_expired` | `bool` | `False` | Skip certificate date validation (for historical attestations with ~3hr cert lifetime) |
+| `expected_files` | `list[tuple[str, bytes]]` | `None` | Output files as `(name, bytes)` pairs (verifies `files_manifest_sha256`) |
 
 ### `VerificationResult`
 
@@ -63,11 +65,13 @@ epsilon-verify extract attestation.json
 | `certificate_chain_valid` | `bool` | Chain to AWS Nitro root CA verified |
 | `pcr_verified` | `bool` | PCR values match expected (if provided) |
 | `output_verified` | `bool` | Output hash matches expected (if provided) |
+| `files_verified` | `bool` | Files manifest hash matches expected files (if provided) |
 | `pcr0` | `str` | PCR0 value (enclave image hash, hex) |
 | `pcr1` | `str` | PCR1 value (kernel hash, hex) |
 | `pcr2` | `str` | PCR2 value (application hash, hex) |
 | `user_data` | `dict` | Parsed application data (job_id, script_hash, dataset_hash, output_hash, timestamp) |
 | `output_hash` | `str` | SHA-256 hash of output from attestation |
+| `files_manifest_sha256` | `str` | Attested output files manifest hash (`None` for older attestations) |
 | `timestamp` | `datetime` | Execution timestamp |
 | `module_id` | `str` | Enclave instance identifier |
 | `error` | `str` | Error message if verification failed |
@@ -80,6 +84,22 @@ epsilon-verify extract attestation.json
 3. **COSE signature** — Verify ECDSA P-384/SHA-384 signature using leaf certificate public key
 4. **PCR values** — Compare PCR0/1/2 against expected values (if provided)
 5. **Output hash** — Verify SHA-256 of execution output matches attested `user_data` hash (if provided)
+6. **Output files** — Rebuild the files manifest and match its SHA-256 against attested `files_manifest_sha256` (if provided)
+
+## Output Files Manifest
+
+Files a script writes are attested via `files_manifest_sha256` in `user_data`. The manifest is a list of
+`{"name", "size", "sha256", "type"}` sorted by name, encoded as
+`json.dumps(manifest, sort_keys=True, separators=(",", ":"))`. Names must match `^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$`
+and the extension decides the type: `csv` text/csv, `png` image/png, `jpg`/`jpeg` image/jpeg,
+`json` application/json, `txt` text/plain, `pdf` application/pdf. No files → manifest `[]`.
+
+```python
+from epsilon_verifier import verify_files_manifest
+
+files = [("results.csv", open("results.csv", "rb").read())]
+assert verify_files_manifest(files, result.files_manifest_sha256)
+```
 
 ## Use in Your Own Project
 

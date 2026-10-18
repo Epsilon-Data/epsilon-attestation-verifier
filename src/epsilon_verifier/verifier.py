@@ -10,6 +10,7 @@ Verification steps:
 3. COSE signature verification
 4. PCR value comparison
 5. Output hash verification
+6. Output files manifest verification
 """
 
 import base64
@@ -19,7 +20,7 @@ import logging
 import time as _time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Sequence, Tuple
 
 import cbor2
 from cryptography import x509
@@ -30,6 +31,7 @@ from cryptography.x509 import load_der_x509_certificate, ExtensionOID, Extension
 from cryptography.exceptions import InvalidSignature
 
 from .aws_root_cert import get_aws_root_certificate
+from .files_manifest import compute_files_manifest_sha256
 from .exceptions import (
     VerificationError,
     InvalidAttestationError,
@@ -37,6 +39,7 @@ from .exceptions import (
     SignatureVerificationError,
     PCRMismatchError,
     OutputHashMismatchError,
+    InvalidOutputFileError,
 )
 
 logger = logging.getLogger(__name__)
@@ -97,6 +100,7 @@ class VerificationResult:
     certificate_chain_valid: bool = False
     pcr_verified: bool = False
     output_verified: bool = False
+    files_verified: bool = False
 
     # Extracted data
     pcr0: Optional[str] = None
@@ -105,6 +109,8 @@ class VerificationResult:
     user_data: Optional[Dict[str, Any]] = None
     output_hash: Optional[str] = None
     expected_output_hash: Optional[str] = None
+    files_manifest_sha256: Optional[str] = None
+    expected_files_manifest_sha256: Optional[str] = None
     timestamp: Optional[datetime] = None
     module_id: Optional[str] = None
 
@@ -123,12 +129,15 @@ class VerificationResult:
             'certificate_chain_valid': self.certificate_chain_valid,
             'pcr_verified': self.pcr_verified,
             'output_verified': self.output_verified,
+            'files_verified': self.files_verified,
             'pcr0': self.pcr0,
             'pcr1': self.pcr1,
             'pcr2': self.pcr2,
             'user_data': self.user_data,
             'output_hash': self.output_hash,
             'expected_output_hash': self.expected_output_hash,
+            'files_manifest_sha256': self.files_manifest_sha256,
+            'expected_files_manifest_sha256': self.expected_files_manifest_sha256,
             'timestamp': self.timestamp.isoformat() if self.timestamp else None,
             'module_id': self.module_id,
             'error': self.error,
@@ -146,6 +155,7 @@ def verify_attestation(
     aws_root_cert_path: Optional[str] = None,
     skip_certificate_verification: bool = False,
     allow_expired: bool = False,
+    expected_files: Optional[Sequence[Tuple[str, bytes]]] = None,
 ) -> VerificationResult:
     """
     Verify an AWS Nitro Enclave attestation document.
@@ -161,6 +171,7 @@ def verify_attestation(
         expected_pcr2: Expected PCR2 value (application hash)
         aws_root_cert_path: Path to AWS root cert (auto-downloads if not provided)
         skip_certificate_verification: Skip cert chain verification (TESTING ONLY)
+        expected_files: Output files as (name, bytes) pairs (to verify files_manifest_sha256)
 
     Returns:
         VerificationResult with all verification details
@@ -187,6 +198,7 @@ def verify_attestation(
             try:
                 result.user_data = json.loads(attestation.user_data.decode())
                 result.output_hash = result.user_data.get('output_hash')
+                result.files_manifest_sha256 = result.user_data.get('files_manifest_sha256')
             except (json.JSONDecodeError, UnicodeDecodeError):
                 result.user_data = {'raw': base64.b64encode(attestation.user_data).decode()}
 
@@ -275,6 +287,29 @@ def verify_attestation(
             logger.info("No expected output provided, skipping output hash verification")
         result.timing['output_hash_ms'] = round((_time.time() - t0) * 1000, 2)
 
+        # Step 7: Verify output files manifest
+        logger.info("Step 6: Verifying output files manifest...")
+        t0 = _time.time()
+        if expected_files is not None:
+            result.expected_files_manifest_sha256 = compute_files_manifest_sha256(expected_files)
+            if not result.files_manifest_sha256:
+                result.error = "No files_manifest_sha256 in attestation user_data"
+                result.timing['total_ms'] = round((_time.time() - total_start) * 1000, 2)
+                return result
+            if result.files_manifest_sha256.lower() != result.expected_files_manifest_sha256:
+                result.error = (
+                    f"Files manifest hash mismatch: got {result.files_manifest_sha256}, "
+                    f"expected {result.expected_files_manifest_sha256}"
+                )
+                result.timing['files_manifest_ms'] = round((_time.time() - t0) * 1000, 2)
+                result.timing['total_ms'] = round((_time.time() - total_start) * 1000, 2)
+                return result
+            result.files_verified = True
+        else:
+            result.files_verified = True
+            logger.info("No expected files provided, skipping files manifest verification")
+        result.timing['files_manifest_ms'] = round((_time.time() - t0) * 1000, 2)
+
         # All checks passed
         result.valid = True
         result.timing['total_ms'] = round((_time.time() - total_start) * 1000, 2)
@@ -289,6 +324,9 @@ def verify_attestation(
         return result
     except SignatureVerificationError as e:
         result.error = f"Signature error: {e}"
+        return result
+    except InvalidOutputFileError as e:
+        result.error = f"Invalid output file: {e}"
         return result
     except Exception as e:
         result.error = f"Verification error: {e}"

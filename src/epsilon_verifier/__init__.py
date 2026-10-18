@@ -10,6 +10,13 @@ from .verifier import (
     VerificationResult,
     AttestationDocument,
 )
+from .files_manifest import (
+    OUTPUT_FILE_TYPES,
+    build_files_manifest,
+    canonical_manifest_bytes,
+    compute_files_manifest_sha256,
+    verify_files_manifest,
+)
 from .pcr_registry import get_published_pcrs
 from .exceptions import (
     VerificationError,
@@ -18,6 +25,7 @@ from .exceptions import (
     SignatureVerificationError,
     PCRMismatchError,
     OutputHashMismatchError,
+    InvalidOutputFileError,
 )
 
 __version__ = "1.0.0"
@@ -26,10 +34,16 @@ __all__ = [
     "VerificationResult",
     "AttestationDocument",
     "get_published_pcrs",
+    "OUTPUT_FILE_TYPES",
+    "build_files_manifest",
+    "canonical_manifest_bytes",
+    "compute_files_manifest_sha256",
+    "verify_files_manifest",
     "VerificationError",
     "InvalidAttestationError",
     "CertificateVerificationError",
     "SignatureVerificationError",
     "PCRMismatchError",
     "OutputHashMismatchError",
+    "InvalidOutputFileError",
 ]
