@@ -141,6 +141,18 @@ class TestVerifyAttestationFiles:
         assert result.files_manifest_sha256 == KAT_SHA256
         assert result.to_dict()["files_manifest_sha256"] == KAT_SHA256
 
+    def test_accepts_user_data_with_manifest_above_512_bytes(self):
+        # A full execution proof with the manifest hash is about 587 bytes
+        doc = _make_attestation({"padding": "x" * 560, "files_manifest_sha256": KAT_SHA256})
+        result = verify_attestation(doc, skip_certificate_verification=True)
+        assert result.valid is True
+        assert result.files_manifest_sha256 == KAT_SHA256
+
+    def test_rejects_user_data_above_1024_bytes(self):
+        doc = _make_attestation({"padding": "x" * 1100})
+        result = verify_attestation(doc, skip_certificate_verification=True)
+        assert result.valid is False
+
     def test_absent_in_older_attestations(self):
         doc = _make_attestation({"output_hash": "ab"})
         result = verify_attestation(doc, skip_certificate_verification=True)

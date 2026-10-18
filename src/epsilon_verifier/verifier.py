@@ -50,7 +50,7 @@ MAX_PCR_INDEX = 31
 REQUIRED_DIGEST = "SHA384"
 MAX_PAYLOAD_SIZE = 16384  # 16KB max payload
 MAX_CERTIFICATE_SIZE = 4096  # 4KB max certificate (real Nitro certs are ~1-1.5KB)
-MAX_USER_DATA_SIZE = 512  # 512 bytes max user_data (AWS spec)
+MAX_USER_DATA_SIZE = 1024  # AWS attestation schema: user_data bstr .size (0..1024)
 MAX_NONCE_SIZE = 512  # 512 bytes max nonce
 MAX_PUBLIC_KEY_SIZE = 1024  # 1KB max public_key
 
