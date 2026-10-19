@@ -36,6 +36,7 @@ else:
 epsilon-verify verify attestation.json
 epsilon-verify verify attestation.json --pcr0 abc123... --output output.txt --json
 epsilon-verify verify attestation.json --files results.csv plot.png
+epsilon-verify verify attestation.json --files-root outputs
 epsilon-verify extract attestation.json
 ```
 
@@ -89,15 +90,30 @@ epsilon-verify extract attestation.json
 ## Output Files Manifest
 
 Files a script writes are attested via `files_manifest_sha256` in `user_data`. The manifest is a list of
-`{"name", "size", "sha256", "type"}` sorted by name, encoded as
-`json.dumps(manifest, sort_keys=True, separators=(",", ":"))`. Names must match `^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$`
-and the extension decides the type: `csv` text/csv, `png` image/png, `jpg`/`jpeg` image/jpeg,
-`json` application/json, `txt` text/plain, `pdf` application/pdf. No files → manifest `[]`.
+`{"name", "size", "sha256", "type"}` sorted by name (plain code-point order), encoded as
+`json.dumps(manifest, sort_keys=True, separators=(",", ":"))`. No files → manifest `[]`.
+
+- `name` is the file's path relative to the job's `outputs/` folder, with `/` as separator (e.g. `plots/fig1.png`).
+  It must match `^[A-Za-z0-9][A-Za-z0-9._-]{0,99}(/[A-Za-z0-9][A-Za-z0-9._-]{0,99}){0,4}$` (at most 5 segments,
+  no `.`/`..`/hidden/empty segments) and be at most 255 characters.
+- `type` comes from the lower-cased extension of the last segment: `csv` text/csv, `png` image/png,
+  `jpg`/`jpeg` image/jpeg, `json` application/json, `txt` text/plain, `pdf` application/pdf. Any other extension,
+  or none, is `application/octet-stream`.
+
+With the CLI, `--files a.csv b.png` names each file by its basename (fine for files at the top of `outputs/`).
+For files in subfolders, pass `--files-root DIR`: files are named by their path relative to `DIR`, and if `--files`
+is omitted every file under `DIR` is checked (symlinks and other non-regular entries are rejected):
+
+```bash
+epsilon-verify verify attestation.json --files-root outputs                       # whole folder
+epsilon-verify verify attestation.json --files-root outputs --files outputs/plots/fig1.png outputs/a.csv
+```
 
 ```python
 from epsilon_verifier import verify_files_manifest
 
-files = [("results.csv", open("results.csv", "rb").read())]
+files = [("results.csv", open("results.csv", "rb").read()),
+         ("plots/fig1.png", open("outputs/plots/fig1.png", "rb").read())]
 assert verify_files_manifest(files, result.files_manifest_sha256)
 ```
 
