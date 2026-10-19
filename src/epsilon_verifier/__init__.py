@@ -11,7 +11,9 @@ from .verifier import (
     AttestationDocument,
 )
 from .files_manifest import (
+    DEFAULT_OUTPUT_FILE_TYPE,
     OUTPUT_FILE_TYPES,
+    is_valid_output_file_name,
     build_files_manifest,
     canonical_manifest_bytes,
     compute_files_manifest_sha256,
@@ -34,7 +36,9 @@ __all__ = [
     "VerificationResult",
     "AttestationDocument",
     "get_published_pcrs",
+    "DEFAULT_OUTPUT_FILE_TYPE",
     "OUTPUT_FILE_TYPES",
+    "is_valid_output_file_name",
     "build_files_manifest",
     "canonical_manifest_bytes",
     "compute_files_manifest_sha256",

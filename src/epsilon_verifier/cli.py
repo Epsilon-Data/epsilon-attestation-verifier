@@ -5,8 +5,10 @@ Command-line interface for attestation verification.
 import argparse
 import json
 import logging
+import os
 import sys
 from pathlib import Path
+from typing import List, Optional, Tuple
 
 from .verifier import verify_attestation
 from .pcr_registry import get_published_pcrs, list_known_versions
@@ -19,6 +21,53 @@ def setup_logging(verbose: bool):
         level=level,
         format='%(levelname)s: %(message)s'
     )
+
+
+def _load_output_files(files: Optional[List[str]], files_root: Optional[str]) -> List[Tuple[str, bytes]]:
+    """
+    Load output files as (name, bytes) pairs.
+
+    Without files_root each file is named by its basename. With files_root each
+    file is named by its path relative to that directory ("/" separated); when
+    no files are listed, every file under files_root is loaded (symlinks and
+    other non-regular entries are rejected, like the enclave does).
+    Raises ValueError with a user-facing message.
+    """
+    if files_root is None:
+        loaded = []
+        for file_arg in files or []:
+            file_path = Path(file_arg)
+            if not file_path.is_file():
+                raise ValueError(f"Output file not found: {file_path}")
+            loaded.append((file_path.name, file_path.read_bytes()))
+        return loaded
+
+    root = Path(os.path.abspath(files_root))
+    if not root.is_dir():
+        raise ValueError(f"Files root is not a directory: {files_root}")
+
+    if files:
+        paths = [Path(os.path.abspath(file_arg)) for file_arg in files]
+    else:
+        paths = []
+        for dirpath, dirnames, filenames in os.walk(root):
+            for entry in sorted(dirnames + filenames):
+                entry_path = Path(dirpath) / entry
+                if entry_path.is_symlink() or not (entry_path.is_dir() or entry_path.is_file()):
+                    raise ValueError(f"Not a regular file or directory: {entry_path}")
+                if entry_path.is_file():
+                    paths.append(entry_path)
+
+    loaded = []
+    for file_path in paths:
+        if file_path.is_symlink() or not file_path.is_file():
+            raise ValueError(f"Output file not found: {file_path}")
+        try:
+            name = file_path.relative_to(root).as_posix()
+        except ValueError:
+            raise ValueError(f"Output file is outside --files-root: {file_path}")
+        loaded.append((name, file_path.read_bytes()))
+    return loaded
 
 
 def _extract_attestation_from_json(raw: str) -> str:
@@ -62,16 +111,14 @@ def cmd_verify(args):
         else:
             expected_output = args.output
 
-    # Load expected output files (name = file basename)
+    # Load expected output files (name = basename, or path relative to --files-root)
     expected_files = None
-    if args.files:
-        expected_files = []
-        for file_arg in args.files:
-            file_path = Path(file_arg)
-            if not file_path.is_file():
-                print(f"Error: Output file not found: {file_path}", file=sys.stderr)
-                return 1
-            expected_files.append((file_path.name, file_path.read_bytes()))
+    if args.files or args.files_root:
+        try:
+            expected_files = _load_output_files(args.files, args.files_root)
+        except ValueError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
 
     # Get PCR values
     expected_pcr0 = args.pcr0
@@ -235,6 +282,9 @@ Examples:
   # Verify output files against the attested files manifest
   epsilon-verify verify attestation.json --files results.csv plot.png
 
+  # Verify a whole outputs/ folder (names = paths relative to it, e.g. plots/fig1.png)
+  epsilon-verify verify attestation.json --files-root outputs
+
   # Extract PCR values without verification
   epsilon-verify extract attestation.json
 
@@ -251,7 +301,11 @@ Examples:
     verify_parser.add_argument('attestation', help='Attestation document (JSON or base64)')
     verify_parser.add_argument('--output', '-o', help='Expected output file or string')
     verify_parser.add_argument('--files', nargs='+', metavar='FILE',
-                               help='Output files to check against the attested files manifest')
+                               help='Output files to check against the attested files manifest '
+                                    '(named by basename, or by path relative to --files-root)')
+    verify_parser.add_argument('--files-root', metavar='DIR',
+                               help='Name output files by their path relative to DIR; '
+                                    'without --files, check every file under DIR')
     verify_parser.add_argument('--pcr0', help='Expected PCR0 value')
     verify_parser.add_argument('--pcr1', help='Expected PCR1 value')
     verify_parser.add_argument('--pcr2', help='Expected PCR2 value')
