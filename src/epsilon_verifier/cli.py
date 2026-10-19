@@ -62,6 +62,17 @@ def cmd_verify(args):
         else:
             expected_output = args.output
 
+    # Load expected output files (name = file basename)
+    expected_files = None
+    if args.files:
+        expected_files = []
+        for file_arg in args.files:
+            file_path = Path(file_arg)
+            if not file_path.is_file():
+                print(f"Error: Output file not found: {file_path}", file=sys.stderr)
+                return 1
+            expected_files.append((file_path.name, file_path.read_bytes()))
+
     # Get PCR values
     expected_pcr0 = args.pcr0
     expected_pcr1 = args.pcr1
@@ -86,6 +97,7 @@ def cmd_verify(args):
         expected_pcr2=expected_pcr2,
         aws_root_cert_path=args.aws_root_cert,
         skip_certificate_verification=args.skip_cert_verification,
+        expected_files=expected_files,
     )
 
     # Output results
@@ -113,6 +125,7 @@ def _print_result(result):
     print(f"Certificate Chain:    {'✓' if result.certificate_chain_valid else '✗'}")
     print(f"PCR Values:           {'✓' if result.pcr_verified else '✗'}")
     print(f"Output Hash:          {'✓' if result.output_verified else '✗'}")
+    print(f"Files Manifest:       {'✓' if result.files_verified else '✗'}")
 
     print()
     print("PCR Values:")
@@ -130,10 +143,15 @@ def _print_result(result):
     if result.expected_output_hash:
         print(f"Expected:    {result.expected_output_hash}")
 
+    if result.files_manifest_sha256:
+        print(f"\nFiles Manifest Hash: {result.files_manifest_sha256}")
+    if result.expected_files_manifest_sha256:
+        print(f"Expected:            {result.expected_files_manifest_sha256}")
+
     if result.user_data:
         print(f"\nUser Data:")
         for key, value in result.user_data.items():
-            if key != 'output_hash':
+            if key not in ('output_hash', 'files_manifest_sha256'):
                 print(f"  {key}: {value}")
 
     print()
@@ -194,6 +212,7 @@ def cmd_extract(args):
         'module_id': result.module_id,
         'user_data': result.user_data,
         'output_hash': result.output_hash,
+        'files_manifest_sha256': result.files_manifest_sha256,
     }
 
     print(json.dumps(output, indent=2))
@@ -213,6 +232,9 @@ Examples:
   # Verify with specific PCR0
   epsilon-verify verify attestation.json --pcr0 abc123...
 
+  # Verify output files against the attested files manifest
+  epsilon-verify verify attestation.json --files results.csv plot.png
+
   # Extract PCR values without verification
   epsilon-verify extract attestation.json
 
@@ -228,6 +250,8 @@ Examples:
     verify_parser = subparsers.add_parser('verify', help='Verify attestation document')
     verify_parser.add_argument('attestation', help='Attestation document (JSON or base64)')
     verify_parser.add_argument('--output', '-o', help='Expected output file or string')
+    verify_parser.add_argument('--files', nargs='+', metavar='FILE',
+                               help='Output files to check against the attested files manifest')
     verify_parser.add_argument('--pcr0', help='Expected PCR0 value')
     verify_parser.add_argument('--pcr1', help='Expected PCR1 value')
     verify_parser.add_argument('--pcr2', help='Expected PCR2 value')
