@@ -210,7 +210,8 @@ def verify_attestation(
                 attestation.certificate,
                 attestation.cabundle,
                 aws_root_cert_path,
-                allow_expired=allow_expired
+                allow_expired=allow_expired,
+                validation_time=attestation.timestamp_datetime,
             )
             result.timing['cert_chain_ms'] = round((_time.time() - t0) * 1000, 2)
             if not result.certificate_chain_valid:
@@ -496,13 +497,15 @@ def _verify_certificate_chain(
     leaf_cert_der: bytes,
     cabundle: List[bytes],
     aws_root_cert_path: Optional[str] = None,
-    allow_expired: bool = False
+    allow_expired: bool = False,
+    validation_time: Optional[datetime] = None,
 ) -> bool:
     """
     Verify certificate chain per AWS specification.
 
     Validates:
-    - Certificate validity periods
+    - Certificate validity periods at validation_time: the attestation's signed timestamp, so a
+      record stays verifiable after its short-lived leaf certificate expires (default: now)
     - Basic Constraints (CA flag, pathLenConstraint)
     - Key Usage extensions
     - Signature chain from leaf to AWS root
@@ -542,8 +545,8 @@ def _verify_certificate_chain(
             if current_cert.subject == current_cert.issuer:
                 break
 
-        # Current time for validity checks
-        now = datetime.now(timezone.utc)
+        # Validity is checked at the time the enclave signed the document
+        now = validation_time or datetime.now(timezone.utc)
 
         # Validate each certificate in chain
         for i, cert in enumerate(chain):
