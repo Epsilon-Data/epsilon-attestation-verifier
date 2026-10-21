@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.3.0](https://github.com/Epsilon-Data/epsilon-attestation-verifier/compare/v1.2.0...v1.3.0) (2026-10-21)
+
+
+### Features
+
+* accept any output file type and subfolder paths in files manifest ([#6](https://github.com/Epsilon-Data/epsilon-attestation-verifier/issues/6)) ([e908e83](https://github.com/Epsilon-Data/epsilon-attestation-verifier/commit/e908e83f36aa78856e1611ec111d80f38420394f))
+* add code-digest to recompute script_hash from a build folder ([#7](https://github.com/Epsilon-Data/epsilon-attestation-verifier/issues/7)) ([7299d90](https://github.com/Epsilon-Data/epsilon-attestation-verifier/commit/7299d90b354cfdb6604d153d36c976b49b84c47a))
+
 ## 1.0.0 (2026-02-17)
 
 ### Features
