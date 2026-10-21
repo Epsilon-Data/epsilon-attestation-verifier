@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+from .code_digest import compute_code_digest
 from .verifier import verify_attestation
 from .pcr_registry import get_published_pcrs, list_known_versions
 
@@ -236,6 +237,23 @@ def cmd_list_versions(args):
     return 0
 
 
+def cmd_code_digest(args):
+    """Recompute the code digest (script_hash) from a job's build/ folder."""
+    try:
+        digest = compute_code_digest(args.build_dir)
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    print(digest)
+    if args.expect:
+        if digest != args.expect.lower():
+            print(f"MISMATCH: attested script_hash is {args.expect}", file=sys.stderr)
+            return 1
+        print("Matches the attested script_hash")
+    return 0
+
+
 def cmd_extract(args):
     """Extract information from attestation without verification."""
     attestation_path = Path(args.attestation)
@@ -288,6 +306,9 @@ Examples:
   # Extract PCR values without verification
   epsilon-verify extract attestation.json
 
+  # Recompute the code digest from the submitted commit's build/ folder
+  epsilon-verify code-digest build --expect <script_hash from user_data>
+
   # Output as JSON
   epsilon-verify verify attestation.json --json
         """
@@ -319,6 +340,13 @@ Examples:
     extract_parser = subparsers.add_parser('extract', help='Extract data from attestation')
     extract_parser.add_argument('attestation', help='Attestation document (JSON or base64)')
 
+    # code-digest command
+    digest_parser = subparsers.add_parser('code-digest',
+                                          help="Recompute script_hash from a job's build/ folder")
+    digest_parser.add_argument('build_dir', help="The build/ folder of the submitted commit")
+    digest_parser.add_argument('--expect', metavar='SCRIPT_HASH',
+                               help='Attested script_hash to compare with (exit 1 on mismatch)')
+
     # list-versions command
     list_parser = subparsers.add_parser('list-versions', help='List known enclave versions')
     list_parser.add_argument('--fetch-latest', action='store_true',
@@ -332,6 +360,8 @@ Examples:
         return cmd_verify(args)
     elif args.command == 'extract':
         return cmd_extract(args)
+    elif args.command == 'code-digest':
+        return cmd_code_digest(args)
     elif args.command == 'list-versions':
         return cmd_list_versions(args)
     else:
