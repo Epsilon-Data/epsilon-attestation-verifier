@@ -60,13 +60,31 @@ epsilon-verify extract attestation.json
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `valid` | `bool` | Overall verification result |
+| `valid` | `bool` | No check failed. Not the same as every check being made: see `fully_assessed` |
+| `fully_assessed` | `bool` | Every optional check was made (certificate chain not skipped; expected PCRs, output and files all given) |
+| `not_assessed` | `list[str]` | Optional checks that were not made, e.g. `["pcr_verified", "output_verified"]` |
+| `check(name)` | `bool` or `"not_assessed"` | One check's result; `"not_assessed"` when there was nothing to compare with |
 | `syntax_valid` | `bool` | CBOR/COSE structure parsed correctly |
 | `aws_signature_valid` | `bool` | ECDSA P-384 signature verified |
 | `certificate_chain_valid` | `bool` | Chain to AWS Nitro root CA verified |
-| `pcr_verified` | `bool` | PCR values match expected (if provided) |
-| `output_verified` | `bool` | Output hash matches expected (if provided) |
-| `files_verified` | `bool` | Files manifest hash matches expected files (if provided) |
+| `pcr_verified` | `bool` | PCR values match expected. Also `True` when none were given: read `check("pcr_verified")` |
+| `output_verified` | `bool` | Output hash matches expected. Also `True` when none was given: read `check("output_verified")` |
+| `files_verified` | `bool` | Files manifest hash matches expected files. Also `True` when none were given: read `check("files_verified")` |
+
+A check with nothing to compare with is **not assessed**, and a result is a full pass only when `valid` and `fully_assessed` are both true. `to_dict()` and `epsilon-verify verify --json` report such a check as `"not_assessed"`, never as `true`:
+
+```bash
+$ epsilon-verify verify attestation.json --json
+{
+  "valid": true,
+  "fully_assessed": false,
+  "not_assessed": ["pcr_verified", "output_verified", "files_verified"],
+  "pcr_verified": "not_assessed",
+  "output_verified": "not_assessed",
+  "files_verified": "not_assessed",
+  ...
+}
+```
 | `pcr0` | `str` | PCR0 value (enclave image hash, hex) |
 | `pcr1` | `str` | PCR1 value (kernel hash, hex) |
 | `pcr2` | `str` | PCR2 value (application hash, hex) |

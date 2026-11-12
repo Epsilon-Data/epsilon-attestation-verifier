@@ -20,7 +20,7 @@ import logging
 import time as _time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Optional, Dict, Any, List, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, Union
 
 import cbor2
 from cryptography import x509
@@ -88,9 +88,29 @@ class AttestationDocument:
         return self.pcrs.get(2)
 
 
+# Reported value of a check that had nothing to compare with, or was skipped
+NOT_ASSESSED = "not_assessed"
+
+# Checks that are assessed only when the caller supplies what to compare with
+# (or, for the certificate chain, does not skip it): result field -> label
+OPTIONAL_CHECKS = {
+    'certificate_chain_valid': 'certificate chain',
+    'pcr_verified': 'PCR values',
+    'output_verified': 'output hash',
+    'files_verified': 'files manifest',
+}
+
+
 @dataclass
 class VerificationResult:
-    """Result of attestation verification."""
+    """Result of attestation verification.
+
+    valid means no check failed. It does not mean every check was made: a check
+    with nothing to compare with is not assessed, and is listed in not_assessed
+    and reported as "not_assessed" by check() and to_dict(). The boolean fields
+    of those checks stay True when not assessed, as before, so read check() or
+    not_assessed before calling a result a pass.
+    """
     valid: bool
     attestation: Optional[AttestationDocument] = None
 
@@ -101,6 +121,9 @@ class VerificationResult:
     pcr_verified: bool = False
     output_verified: bool = False
     files_verified: bool = False
+
+    # Optional checks that were actually made (names from OPTIONAL_CHECKS)
+    assessed: Set[str] = field(default_factory=set)
 
     # Extracted data
     pcr0: Optional[str] = None
@@ -121,15 +144,33 @@ class VerificationResult:
     # Per-step timing (milliseconds)
     timing: Dict[str, float] = field(default_factory=dict)
 
+    def check(self, name: str) -> Union[bool, str]:
+        """True or False for a check that was made, NOT_ASSESSED for an optional one that was not."""
+        if name in OPTIONAL_CHECKS and name not in self.assessed:
+            return NOT_ASSESSED
+        return bool(getattr(self, name))
+
+    @property
+    def not_assessed(self) -> List[str]:
+        """Optional checks that were not made, in report order."""
+        return [name for name in OPTIONAL_CHECKS if name not in self.assessed]
+
+    @property
+    def fully_assessed(self) -> bool:
+        """Whether every optional check was made."""
+        return not self.not_assessed
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             'valid': self.valid,
+            'fully_assessed': self.fully_assessed,
+            'not_assessed': self.not_assessed,
             'syntax_valid': self.syntax_valid,
             'aws_signature_valid': self.aws_signature_valid,
-            'certificate_chain_valid': self.certificate_chain_valid,
-            'pcr_verified': self.pcr_verified,
-            'output_verified': self.output_verified,
-            'files_verified': self.files_verified,
+            'certificate_chain_valid': self.check('certificate_chain_valid'),
+            'pcr_verified': self.check('pcr_verified'),
+            'output_verified': self.check('output_verified'),
+            'files_verified': self.check('files_verified'),
             'pcr0': self.pcr0,
             'pcr1': self.pcr1,
             'pcr2': self.pcr2,
@@ -206,11 +247,13 @@ def verify_attestation(
         if not skip_certificate_verification:
             logger.info("Step 2: Verifying certificate chain...")
             t0 = _time.time()
+            result.assessed.add('certificate_chain_valid')
             result.certificate_chain_valid = _verify_certificate_chain(
                 attestation.certificate,
                 attestation.cabundle,
                 aws_root_cert_path,
-                allow_expired=allow_expired
+                allow_expired=allow_expired,
+                validation_time=attestation.timestamp_datetime,
             )
             result.timing['cert_chain_ms'] = round((_time.time() - t0) * 1000, 2)
             if not result.certificate_chain_valid:
@@ -240,6 +283,8 @@ def verify_attestation(
         logger.info("Step 4: Verifying PCR values...")
         t0 = _time.time()
         pcr_errors = []
+        if expected_pcr0 or expected_pcr1 or expected_pcr2:
+            result.assessed.add('pcr_verified')
         if expected_pcr0:
             if not attestation.pcr0:
                 pcr_errors.append("PCR0 expected but not present in attestation")
@@ -269,6 +314,7 @@ def verify_attestation(
         logger.info("Step 5: Verifying output hash...")
         t0 = _time.time()
         if expected_output is not None:
+            result.assessed.add('output_verified')
             result.expected_output_hash = hashlib.sha256(expected_output.encode()).hexdigest()
             if result.output_hash:
                 if result.output_hash.lower() == result.expected_output_hash.lower():
@@ -291,6 +337,7 @@ def verify_attestation(
         logger.info("Step 6: Verifying output files manifest...")
         t0 = _time.time()
         if expected_files is not None:
+            result.assessed.add('files_verified')
             result.expected_files_manifest_sha256 = compute_files_manifest_sha256(expected_files)
             if not result.files_manifest_sha256:
                 result.error = "No files_manifest_sha256 in attestation user_data"
@@ -496,13 +543,15 @@ def _verify_certificate_chain(
     leaf_cert_der: bytes,
     cabundle: List[bytes],
     aws_root_cert_path: Optional[str] = None,
-    allow_expired: bool = False
+    allow_expired: bool = False,
+    validation_time: Optional[datetime] = None,
 ) -> bool:
     """
     Verify certificate chain per AWS specification.
 
     Validates:
-    - Certificate validity periods
+    - Certificate validity periods at validation_time: the attestation's signed timestamp, so a
+      record stays verifiable after its short-lived leaf certificate expires (default: now)
     - Basic Constraints (CA flag, pathLenConstraint)
     - Key Usage extensions
     - Signature chain from leaf to AWS root
@@ -542,8 +591,8 @@ def _verify_certificate_chain(
             if current_cert.subject == current_cert.issuer:
                 break
 
-        # Current time for validity checks
-        now = datetime.now(timezone.utc)
+        # Validity is checked at the time the enclave signed the document
+        now = validation_time or datetime.now(timezone.utc)
 
         # Validate each certificate in chain
         for i, cert in enumerate(chain):

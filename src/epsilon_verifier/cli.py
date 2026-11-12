@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 from .code_digest import compute_code_digest
-from .verifier import verify_attestation
+from .verifier import NOT_ASSESSED, OPTIONAL_CHECKS, verify_attestation
 from .pcr_registry import get_published_pcrs, list_known_versions
 
 
@@ -157,11 +157,25 @@ def cmd_verify(args):
     return 0 if result.valid else 1
 
 
+def _mark(check):
+    """How one check is shown: made and passed, made and failed, or not made."""
+    if check == NOT_ASSESSED:
+        return "– not assessed"
+    return "✓" if check else "✗"
+
+
 def _print_result(result):
     """Print verification result in human-readable format."""
-    if result.valid:
+    if result.valid and result.fully_assessed:
         print("\n✓ ATTESTATION VERIFIED")
         print("=" * 50)
+    elif result.valid:
+        labels = ", ".join(OPTIONAL_CHECKS[name] for name in result.not_assessed)
+        print("\n✓ NO CHECK FAILED, BUT NOT EVERY CHECK WAS MADE")
+        print("=" * 50)
+        print(f"Not assessed: {labels}")
+        print("Give the expected values (--output, --files, --pcr0 or --version) to assess them.")
+        print()
     else:
         print("\n✗ VERIFICATION FAILED")
         print("=" * 50)
@@ -169,11 +183,11 @@ def _print_result(result):
             print(f"Error: {result.error}")
         print()
 
-    print(f"AWS Signature:        {'✓' if result.aws_signature_valid else '✗'}")
-    print(f"Certificate Chain:    {'✓' if result.certificate_chain_valid else '✗'}")
-    print(f"PCR Values:           {'✓' if result.pcr_verified else '✗'}")
-    print(f"Output Hash:          {'✓' if result.output_verified else '✗'}")
-    print(f"Files Manifest:       {'✓' if result.files_verified else '✗'}")
+    print(f"AWS Signature:        {_mark(result.check('aws_signature_valid'))}")
+    print(f"Certificate Chain:    {_mark(result.check('certificate_chain_valid'))}")
+    print(f"PCR Values:           {_mark(result.check('pcr_verified'))}")
+    print(f"Output Hash:          {_mark(result.check('output_verified'))}")
+    print(f"Files Manifest:       {_mark(result.check('files_verified'))}")
 
     print()
     print("PCR Values:")
