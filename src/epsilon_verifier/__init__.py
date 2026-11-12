@@ -6,6 +6,8 @@ No AWS account or Nitro hardware required.
 """
 
 from .verifier import (
+    NOT_ASSESSED,
+    OPTIONAL_CHECKS,
     verify_attestation,
     VerificationResult,
     AttestationDocument,
@@ -34,6 +36,8 @@ from .exceptions import (
 __version__ = "1.0.0"
 __all__ = [
     "verify_attestation",
+    "NOT_ASSESSED",
+    "OPTIONAL_CHECKS",
     "VerificationResult",
     "AttestationDocument",
     "get_published_pcrs",
